@@ -1,21 +1,21 @@
-# Configuration Matérielle - Compteur de Colonies ESP32-CAM
+# Configuration Matérielle - Compteur de Colonies ESP32-CAM (V2)
 
-## 1. Brochage (Pinout)
+## 1. Brochage Mis à Jour (Advanced Pinout)
 
 | Composant | Pin ESP32 | Description |
 | :--- | :--- | :--- |
-| **Bouton TTP223** | GPIO 13 | Signal d'entrée (Digital Input). |
-| **Carte SD (Mode 1-bit)** | GPIO 2, 14, 15 | Utilisé pour l'enregistrement des images. |
-| **Flash Intégré** | GPIO 4 | Peut être utilisé pour l'éclairage de capture. |
-| **Caméra OV2640** | (Standard) | Pins standard de l'ESP32-CAM AI-Thinker. |
+| **Bouton TTP223** | GPIO 13 | Déclenchement capture (Signal Actif à l'état BAS / Active LOW). |
+| **Flash Intégré** | GPIO 4 | Contrôlé en **PWM** pour ajuster la luminosité. |
+| **NeoPixel Ring** | GPIO 12 | Éclairage annulaire RGB et retour d'état visuel. |
+| **Capteur BME280** | GPIO 26 (SDA) / 27 (SCL) | Température, Humidité, Pression (I2C). |
+| **Carte SD (1-bit)** | GPIO 2, 14, 15 | Stockage images et logs CSV. |
 
-## 2. Note sur le mode SD 1-bit
-Pour libérer le **GPIO 13** (souvent utilisé par la carte SD en mode 4-bit), nous utilisons le mode **1-bit**.
-- **Impact sur la qualité :** Aucun. La qualité de l'image dépend uniquement du capteur OV2640 et des paramètres de compression JPEG.
-- **Impact sur la vitesse :** L'enregistrement d'une photo prendra environ 100-200ms de plus qu'en 4-bit, ce qui est négligeable pour cette application.
+## 2. Détails techniques
+- **I2C :** Le bus I2C est partagé avec les signaux SIOD/SIOC de la caméra. Cela fonctionne car les adresses sont distinctes.
+- **PWM Flash :** Fréquence de 5kHz, résolution 8-bit. Permet d'éviter la surexposition des colonies blanches.
+- **NeoPixel :** Utilisé pour le retour d'état (Vert: Prêt, Orange: Init, Bleu: Enregistrement, Rouge: Erreur).
 
-## 3. Montage du Bouton TTP223
-- **VCC :** 3.3V ou 5V (selon le module)
-- **GND :** GND
-- **SIG :** GPIO 13
-- **Configuration :** Le cavalier (jumper) sur le TTP223 doit être configuré pour une sortie active au repos (ou gérer l'inversion dans le code Arduino).
+## 3. Schéma de connexion
+- **NeoPixel VCC :** 5V (recommandé pour la luminosité).
+- **BME280 VCC :** 3.3V.
+- **Bouton SIG :** GPIO 13 (Le TTP223 doit être configuré en mode 'Active LOW' car GPIO 13 possède une résistance de pull-up interne sur l'ESP32-CAM).
