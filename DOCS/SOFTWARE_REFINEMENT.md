@@ -15,3 +15,9 @@ L'anneau de LED sert d'interface utilisateur :
 
 ## 3. Optimisations PWM
 L'intensité du flash est réglée par défaut à 128/255 pour éviter l'éblouissement du capteur OV2640 sur le milieu MRS clair. Cette valeur peut être ajustée dans la variable `flashBrightness` du code.
+
+## 4. Algorithmes de Vision (Inspiration ImageJ)
+Pour le comptage sur ESP32, nous privilégierons une approche hybride :
+1.  **Soustraction de fond locale :** Pour compenser l'opacité variable du milieu MRS.
+2.  **Seuillage d'Otsu :** Auto-adaptation à la luminosité de la capture.
+3.  **Filtrage par taille/circularité :** Comme le fait l'outil "Analyze Particles" d'ImageJ pour éliminer les poussières et les bulles d'air.
