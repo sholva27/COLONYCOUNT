@@ -7,7 +7,15 @@ Pour transformer le prototype actuel en un outil de laboratoire robuste et préc
 *   **Filtre Polarisant :** Placer un petit film polarisant sur les LEDs et un autre (croisé à 90°) sur la caméra. Cela élimine radicalement les reflets brillants sur l'agar humide et le plastique.
 
 ## 2. Contrôle de l'Éclairage
-*   **Éclairage Variable (PWM) :** Utiliser un transistor MOSFET (ex: 2N7000) pour contrôler l'intensité des LEDs depuis l'ESP32. Cela permet d'ajuster la luminosité selon l'opacité du milieu MRS.
+*   **Éclairage Variable (PWM) :** Utiliser un transistor MOSFET pour contrôler l'intensité des LEDs depuis l'ESP32. Il est crucial de choisir un MOSFET à "niveau logique" (Logic Level) capable de s'ouvrir complètement avec les 3.3V de l'ESP32.
+
+### MOSFETs Recommandés (Compatibles 3.3V) :
+| Modèle | Format | Courant Max | Avantages |
+| :--- | :--- | :--- | :--- |
+| **2N7000** | TO-92 (traversant) | 200mA | Très commun, idéal pour de petites barres de LEDs. |
+| **BSS138** | SOT-23 (CMS) | 360mA | Très petit, parfait pour intégration sur PCB. |
+| **AO3400** | SOT-23 (CMS) | 5.8A | Ultra-puissant, pour des éclairages très intenses. |
+| **IRLZ44N** | TO-220 (gros) | 47A | Surdimensionné mais s'ouvre parfaitement à 3.3V. |
 *   **Ring Light RGB :** Utiliser un anneau de LEDs NeoPixel (WS2812B). En changeant la couleur (ex: lumière verte ou bleue), on peut augmenter le contraste de certaines colonies lactiques translucides.
 
 ## 3. Capteurs Environnementaux

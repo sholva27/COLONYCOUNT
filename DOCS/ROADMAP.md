@@ -4,7 +4,9 @@
 - [x] Initialisation ESP32-CAM.
 - [x] Gestion Carte SD et bouton tactile.
 - [x] Système de nommage séquentiel des images.
-- [x] Documentation initiale.
+- [x] Contrôle d'éclairage PWM et NeoPixel.
+- [x] Intégration capteur BME280 et journalisation CSV.
+- [x] Documentation initiale et avancée.
 
 ## Phase 2 : Constitution du Dataset ⏳
 - [ ] Capture de 500+ images (250 lactiques, 250 contaminants).

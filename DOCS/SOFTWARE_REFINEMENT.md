@@ -1,17 +1,17 @@
-# Raffinement Logiciel (Software)
+# Raffinement Logiciel (Software) - V2
 
-## 1. Prétraitement d'image
-- Implémenter un algorithme de correction de vignettage (les bords sont souvent plus sombres).
-- Conversion en niveaux de gris ou en espace couleur LAB pour mieux isoler les colonies du fond.
+## 1. Gestion des données (Journalisation)
+Le système enregistre désormais un fichier `data.csv` à la racine de la carte SD à chaque capture.
+- **Champs :** ID de l'image, Température (°C), Humidité (%), Pression (hPa), Intensité Flash (0-255).
+- **Utilité :** Permet de corréler l'aspect des colonies avec les conditions de croissance.
 
-## 2. Optimisation IA
-- Utilisation de la quantification 8-bit (INT8) pour diviser par 4 la taille du modèle.
-- Élagage (Pruning) des neurones inutiles pour augmenter la vitesse d'inférence.
+## 2. Retour visuel par NeoPixel
+L'anneau de LED sert d'interface utilisateur :
+- **Orange fixe :** Démarrage et initialisation des périphériques.
+- **Vert fixe (1s) :** Prêt pour la capture.
+- **Blanc brillant :** Capture en cours (éclairage d'appoint).
+- **Bleu flash :** Écriture sur carte SD réussie.
+- **Rouge fixe :** Erreur critique (Carte SD absente ou Caméra HS).
 
-## 3. Système de Fichiers
-- Utiliser LittleFS pour les petits fichiers de configuration et SD_MMC pour les images.
-- Implémenter un système de rotation de logs pour ne pas saturer la SD.
-
-## 4. Mode Sommeil
-- Mettre l'ESP32 en Deep Sleep entre les captures pour économiser la batterie (si utilisation portable).
-- Réveil (Wake-up) via le bouton tactile sur le GPIO 13.
+## 3. Optimisations PWM
+L'intensité du flash est réglée par défaut à 128/255 pour éviter l'éblouissement du capteur OV2640 sur le milieu MRS clair. Cette valeur peut être ajustée dans la variable `flashBrightness` du code.
