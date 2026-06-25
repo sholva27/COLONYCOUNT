@@ -27,3 +27,8 @@
 - [ ] Passage à MicroPython.
 - [ ] Conception d'un boîtier imprimé en 3D.
 - [ ] Intégration d'un écran OLED pour affichage direct du compte.
+
+## Phase 6 : Évolution Professionnelle (Optionnelle) 🚀
+- [ ] Migration vers l'**ESP32-P4** (WT9932P4-TINY).
+- [ ] Passage aux capteurs MIPI-CSI (5MP+).
+- [ ] Implémentation de l'accélération IA matérielle.
