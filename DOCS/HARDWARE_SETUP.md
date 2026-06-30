@@ -7,7 +7,8 @@
 | **Bouton TTP223** | GPIO 13 | Déclenchement capture (Signal Actif à l'état BAS / Active LOW). |
 | **Flash Intégré** | GPIO 4 | Contrôlé en **PWM** pour ajuster la luminosité. |
 | **NeoPixel Ring** | GPIO 12 | Éclairage annulaire RGB (⚠️ Pin de boot critique). |
-| **Capteur BME280** | GPIO 26 (SDA) / 27 (SCL) | Température, Humidité, Pression (I2C). |
+| **Capteur BME280** | GPIO 26 (SDA) / 27 (SCL) | Température, Humidité, Pression (I2C, 0x76). |
+| **RTC DS3231** | GPIO 26 (SDA) / 27 (SCL) | Horodatage (I2C, 0x68). Bus partagé avec Camera. |
 | **Carte SD (1-bit)** | GPIO 2, 14, 15 | Stockage images et logs CSV. |
 
 ## 2. Détails techniques et Subtilités Critiques
@@ -24,8 +25,15 @@ Le flash intégré est sur le **GPIO 4**. Sur l'ESP32-CAM, cette broche est part
 Les NeoPixels (WS2812B) attendent un signal logique à 5V, mais l'ESP32 sort du 3.3V. Bien que cela "tombe en marche" souvent, c'est hors spécification.
 - **Solution recommandée :** Utiliser un convertisseur de niveau logique (Level Shifter) ou alimenter la première LED via une diode pour abaisser son seuil de détection.
 
-### D. I2C Partagé
-Le bus I2C (BME280) partage les pins **GPIO 26/27** avec le protocole SCCB de la caméra. Le code gère cela en ouvrant/fermant le bus `Wire` dynamiquement.
+### D. I2C Partagé (Multi-esclaves)
+Le bus I2C partage les pins **GPIO 26/27** avec trois périphériques :
+1. **Caméra SCCB :** Utilisé par le driver interne ESP-IDF.
+2. **BME280 (0x76) :** Données environnementales.
+3. **RTC DS3231 (0x68) :** Horloge temps réel.
+
+Le firmware v1.5+ minimise les conflits en regroupant les lectures I2C dans une seule session `Wire.begin()` / `Wire.end()` par capture.
+
+> ⚠️ **Avertissement Module RTC :** Certains modules DS3231 intègrent un circuit de charge (R1/D1) pour pile rechargeable LIR2032. Si vous utilisez une pile **CR2032 standard**, retirez la résistance R1 pour éviter tout risque de fuite ou surchauffe.
 
 ## 3. Schéma de connexion
 - **NeoPixel VCC :** 5V.
