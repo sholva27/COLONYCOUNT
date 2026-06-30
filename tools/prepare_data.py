@@ -43,8 +43,15 @@ def verify_and_prepare(sd_path, output_path):
     processed_data = []
 
     for filename in files:
-        # Extraction de l'ID depuis 'colony_X.jpg'
-        file_id = filename.replace('colony_', '').replace('.jpg', '')
+        # Extraction du timestamp depuis 'colony_YYYYMMDD_hhmmss.jpg'
+        ts_from_filename = filename.replace('colony_', '').replace('.jpg', '').replace('_', ' ')
+        # Conversion format filename vers format CSV (YYYYMMDD hhmmss -> YYYY-MM-DD hh:mm:ss)
+        try:
+            # On tente de reconstruire le format CSV pour le matching
+            dt_obj = datetime.strptime(ts_from_filename, "%Y%m%d %H%M%S")
+            csv_ts_key = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            csv_ts_key = "unknown"
 
         try:
             full_path = os.path.join(img_dir, filename)
@@ -53,13 +60,17 @@ def verify_and_prepare(sd_path, output_path):
             with Image.open(full_path) as img:
                 img.verify()
 
-            # 2. Récupération des métadonnées réelles du capteur
-            img_meta = metadata.get(file_id, {})
-            sensor_ts = img_meta.get('Timestamp', '0000-00-00_00-00-00')
-            # Nettoyage du timestamp pour le nom de fichier
-            clean_ts = str(sensor_ts).replace(' ', '_').replace(':', '-')
+            # 2. Récupération des métadonnées réelles via le Timestamp (v1.6+)
+            # On cherche dans le CSV la ligne qui a ce timestamp
+            img_meta = {}
+            if metadata:
+                # On cherche par valeur de colonne 'Timestamp' car l'index est l'ID séquentiel
+                match = df[df['Timestamp'] == csv_ts_key]
+                if not match.empty:
+                    img_meta = match.iloc[0].to_dict()
 
-            new_name = f"COL_{file_id}_{clean_ts}.jpg"
+            sensor_ts = ts_from_filename.replace(' ', '_')
+            new_name = f"COL_{sensor_ts}.jpg"
 
             # 3. Copie vers a_trier par défaut
             dest_path = os.path.join(output_path, 'a_trier', new_name)
