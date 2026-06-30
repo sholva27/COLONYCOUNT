@@ -1,7 +1,10 @@
 /**
  * @file ColonyCounterCapture.ino
  * @author Jules
- * @brief Système de capture d'images durci avec horodatage NTP.
+ * @brief Système de capture d'images durci (v1.3).
+ *        - Watchdog protégé pendant le boot (WiFi/NTP)
+ *        - Anti-rebond et anti-multi-déclenchement pour TTP223
+ *        - Gestion isolée du bus I2C
  */
 
 #include "esp_camera.h"
@@ -23,18 +26,18 @@
 const char* ssid     = "VOTRE_SSID";
 const char* password = "VOTRE_PASSWORD";
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600; // Ajuster selon fuseau (ex: +1h = 3600)
+const long  gmtOffset_sec = 3600;
 const int   daylightOffset_sec = 3600;
 
 // Pins
 const int BUTTON_PIN = 13;
-const int IMAGING_LIGHT_PIN = 4; // High-CRI LED PWM (via MOSFET). Shared with SD D1.
-const int NEOPIXEL_PIN = 12;      // Status Ring (16 LEDs). Pull-down 10k required.
-const int NUMPIXELS = 16;         // Anneau 44.5mm
+const int IMAGING_LIGHT_PIN = 4;
+const int NEOPIXEL_PIN = 12;
+const int NUMPIXELS = 16;
 
 #define I2C_SDA 26
 #define I2C_SCL 27
-#define WDT_TIMEOUT 10
+#define WDT_TIMEOUT 15 // Augmenté à 15s pour plus de marge
 
 Preferences preferences;
 Adafruit_BME280 bme;
@@ -72,6 +75,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT);
 
+  // Initialisation Watchdog
   esp_task_wdt_init(WDT_TIMEOUT, true);
   esp_task_wdt_add(NULL);
 
@@ -79,33 +83,28 @@ void setup() {
   pixels.setBrightness(50);
   showColor(pixels.Color(255, 165, 0));
 
-  // WiFi et NTP
+  // WiFi et NTP avec Reset du Watchdog
   WiFi.begin(ssid, password);
   unsigned long startAttemptTime = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
     delay(500);
     Serial.print(".");
+    esp_task_wdt_reset(); // Empêcher le reset WDT pendant la connexion WiFi
   }
+
   if(WiFi.status() == WL_CONNECTED) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-
-    // Attendre que l'heure soit réellement synchronisée (asynchrone)
-    Serial.print("Attente synchro NTP");
+    Serial.print("Synchro NTP");
     int retry = 0;
     while (time(nullptr) < 1000000 && retry < 20) {
       delay(500);
       Serial.print(".");
+      esp_task_wdt_reset(); // Empêcher le reset WDT pendant l'attente NTP
       retry++;
     }
-
-    if (time(nullptr) > 1000000) {
-        Serial.println("\nNTP Synchronisé !");
-    } else {
-        Serial.println("\nÉchec synchro NTP (timeout)");
-    }
-
+    Serial.println(time(nullptr) > 1000000 ? " OK" : " Échec");
     WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF); // Désactiver WiFi pour économiser et éviter brownout
+    WiFi.mode(WIFI_OFF);
   }
 
   ledcSetup(pwmChannel, pwmFreq, pwmResolution);
@@ -150,6 +149,7 @@ void setup() {
     return;
   }
 
+  // I2C Management
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(0x76, &Wire)) bmeFound = true;
   Wire.end();
@@ -159,10 +159,7 @@ void setup() {
     return;
   }
 
-  // Création du dossier images si inexistant
-  if(!SD_MMC.exists("/img")) {
-      SD_MMC.mkdir("/img");
-  }
+  if(!SD_MMC.exists("/img")) SD_MMC.mkdir("/img");
 
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
@@ -191,9 +188,7 @@ void showColor(uint32_t color) {
 
 String getTimestamp() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    return "0000-00-00 00:00:00";
-  }
+  if(!getLocalTime(&timeinfo)) return "0000-00-00 00:00:00";
   char timeString[20];
   strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
   return String(timeString);
@@ -234,6 +229,7 @@ void takePicture() {
     float h = bmeFound ? bme.readHumidity() : 0;
     float p = bmeFound ? bme.readPressure() / 100.0F : 0;
     Wire.end();
+    delay(10); // Laisse le bus se stabiliser avant tout usage SCCB par AEC/AGC
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
@@ -247,10 +243,16 @@ void takePicture() {
   }
 
   esp_camera_fb_return(fb);
-  delay(500);
+  delay(200);
   ledcWrite(pwmChannel, 0);
   pixels.clear();
   pixels.show();
+
+  // Attendre le relâchement du bouton (TTP223 a un temps de décharge)
+  while(digitalRead(BUTTON_PIN) == LOW) {
+      delay(10);
+      esp_task_wdt_reset();
+  }
 
   esp_task_wdt_reset();
   isProcessing = false;
@@ -260,13 +262,20 @@ void loop() {
   esp_task_wdt_reset();
   if (!isInitialized) return;
 
+  // Déclenchement sur front descendant (Active LOW) avec validation de durée (200ms)
   if (digitalRead(BUTTON_PIN) == LOW && !isProcessing) {
     unsigned long pressTime = millis();
+    bool confirmed = false;
     while(digitalRead(BUTTON_PIN) == LOW) {
       if (millis() - pressTime > 200) {
-        takePicture();
+        confirmed = true;
         break;
       }
+      esp_task_wdt_reset();
+    }
+
+    if (confirmed) {
+        takePicture();
     }
   }
 }

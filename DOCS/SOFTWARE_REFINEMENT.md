@@ -19,7 +19,7 @@ L'intensité du flash est réglée par défaut à 128/255 pour éviter l'ébloui
 ## 4. Stabilité et Durcissement (Hardening)
 Le code intègre plusieurs mécanismes de sécurité :
 - **Watchdog (WDT) :** Si le système se bloque (ex: I2C ou SD), l'ESP32 redémarre automatiquement après 10 secondes.
-- **Gestion I2C isolée :** Le bus I2C est ouvert (`Wire.begin`) uniquement lors de la lecture des capteurs et fermé immédiatement après (`Wire.end`) pour ne pas interférer avec le driver SCCB de la caméra.
+- **Gestion I2C isolée :** Le bus I2C est ouvert (`Wire.begin`) uniquement lors de la lecture des capteurs et fermé immédiatement après (`Wire.end`) pour ne pas interférer avec le driver SCCB de la caméra. Une latence de sécurité est ajoutée pour stabiliser le bus. Note : Pour une fiabilité de grade industriel, la migration vers **ESP32-S3** (bus séparés) est la solution préconisée.
 - **Stabilisation AEC/AWB :** Avant la capture finale, 3 images sont capturées et jetées pour laisser le temps au capteur de stabiliser l'exposition lumineuse sous le flash.
 - **Flag isProcessing :** Empêche tout chevauchement de processus (bouton pressé plusieurs fois trop vite).
 

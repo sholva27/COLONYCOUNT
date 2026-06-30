@@ -23,4 +23,5 @@
 
 ## 5. Problèmes Bouton Tactile (TTP223)
 - **Déclenchements intempestifs :** Sensibilité trop élevée ou câbles trop longs.
+- **Multi-déclenchement (Double photo) :** Le TTP223 est un capteur capacitif qui peut mettre du temps à se "décharger" après un contact. Le code intègre une attente de relâchement explicite pour éviter cela.
 - **Bouton ne répond pas :** Vérifiez que le GPIO 13 ne touche pas un autre composant de la carte SD.
