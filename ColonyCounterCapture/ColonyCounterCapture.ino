@@ -1,12 +1,3 @@
-/**
- * @file ColonyCounterCapture.ino
- * @author Jules
- * @brief Système de capture durci pour Dataset (v1.6).
- *        - Paramètres caméra FIGÉS (AEC/AWB) pour cohérence IA
- *        - Nommage fichiers par horodatage RTC
- *        - Diagnostic visuel avancé et gestion espace SD
- */
-
 #include "esp_camera.h"
 #include "Arduino.h"
 #include "FS.h"
@@ -20,6 +11,13 @@
 #include <Adafruit_NeoPixel.h>
 #include <RTClib.h>
 #include <esp_task_wdt.h>
+
+/**
+ * AI INCLUDES
+ * Note: These require the 'EloquentTinyML' or 'TensorFlowLite_ESP32' library.
+ */
+// #include <EloquentTinyML.h>
+// #include "model_data.h" // Généré par tools/train_colony_model.py
 
 // Pins
 const int BUTTON_PIN = 13;
@@ -39,6 +37,7 @@ const uint32_t COLOR_SUCCESS = 0x0000FF; // Bleu
 const uint32_t COLOR_ERR_CAM = 0xFF0000; // Rouge
 const uint32_t COLOR_ERR_SD = 0xFF00FF;  // Magenta
 const uint32_t COLOR_WARN_SPACE = 0x800080; // Violet
+const uint32_t COLOR_AI_BUSY = 0xFFFF00;  // Jaune
 
 Preferences preferences;
 Adafruit_BME280 bme;
@@ -74,9 +73,36 @@ const int pwmChannel = 7;
 const int pwmFreq = 5000;
 const int pwmResolution = 8;
 
+/**
+ * AI PARAMETERS
+ */
+#define MODEL_INPUT_SIZE 128
+#define ARENA_SIZE 128 * 1024
+// Eloquent::TinyML::TfLite<2, ARENA_SIZE> ml; // 2 classes ou binaire
+
 void showColor(uint32_t color) {
   for(int i=0; i<NUMPIXELS; i++) pixels.setPixelColor(i, color);
   pixels.show();
+}
+
+/**
+ * Placeholder pour l'analyse d'image et le comptage
+ */
+void runInference(camera_fb_t * fb, int *lab_count, int *other_count) {
+  *lab_count = 0;
+  *other_count = 0;
+
+  // Dans la version finale :
+  // 1. Parcourir l'image (Sliding window ou simple grid)
+  // 2. Extraire des zones de 128x128
+  // 3. Appeler ml.predict(input)
+  // 4. Incrémenter les compteurs
+
+  // Pour Prototype 1 (Simulation pour tester le CSV)
+  Serial.println("AI: Running inference (placeholder)...");
+  delay(500);
+  *lab_count = random(10, 50);
+  *other_count = random(0, 5);
 }
 
 void setup() {
@@ -114,7 +140,7 @@ void setup() {
   config.pin_pwdn = PWDN_GPIO_NUM;
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG;
+  config.pixel_format = PIXFORMAT_JPEG; // JPEG pour stockage, besoin de conversion RGB pour IA
 
   if(psramFound()){
     config.frame_size = FRAMESIZE_UXGA;
@@ -132,14 +158,13 @@ void setup() {
     return;
   }
 
-  // FIGER LES RÉGLAGES CAPTEUR (Après init)
   sensor_t * s = esp_camera_sensor_get();
-  s->set_whitebal(s, 0);       // Désactiver AWB
-  s->set_wb_mode(s, 0);        // Mode fixe (Daylight/Manual)
-  s->set_exposure_ctrl(s, 0);  // Désactiver AEC
-  s->set_aec_value(s, 300);    // Valeur fixe à ajuster selon éclairage
-  s->set_gain_ctrl(s, 0);      // Désactiver AGC
-  s->set_agc_gain(s, 0);       // Gain fixe
+  s->set_whitebal(s, 0);
+  s->set_wb_mode(s, 0);
+  s->set_exposure_ctrl(s, 0);
+  s->set_aec_value(s, 300);
+  s->set_gain_ctrl(s, 0);
+  s->set_agc_gain(s, 0);
 
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(0x76, &Wire)) bmeFound = true;
@@ -158,23 +183,19 @@ void setup() {
 
   if(!SD_MMC.exists("/img")) SD_MMC.mkdir("/img");
 
-  // Vérification espace SD
-  uint64_t freeBytes = SD_MMC.totalBytes() - SD_MMC.usedBytes();
-  if (freeBytes < 50 * 1024 * 1024) {
-      showColor(COLOR_WARN_SPACE);
-      delay(2000);
-  }
-
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
     if(file) {
-      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM");
+      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM,LAB_Count,Other_Count");
       file.close();
     }
   }
 
   preferences.begin("colony-counter", false);
   pictureNumber = preferences.getUInt("num", 0);
+
+  // Init IA (si model_data.h présent)
+  // ml.begin(model_data);
 
   showColor(COLOR_READY);
   delay(1000);
@@ -200,7 +221,6 @@ void takePicture() {
   ledcWrite(pwmChannel, flashBrightness);
   showColor(COLOR_CAPTURE);
 
-  // Stabilisation AEC/AWB (même si désactivés, le capteur a besoin de frames pour se caler)
   for(int i = 0; i < 3; i++) {
     camera_fb_t * dummy_fb = esp_camera_fb_get();
     if(dummy_fb) esp_camera_fb_return(dummy_fb);
@@ -215,6 +235,13 @@ void takePicture() {
     isProcessing = false;
     return;
   }
+
+  // --- PHASE INFERENCE AI ---
+  showColor(COLOR_AI_BUSY);
+  int lab_found = 0;
+  int other_found = 0;
+  runInference(fb, &lab_found, &other_found);
+  // -------------------------
 
   Wire.begin(I2C_SDA, I2C_SCL);
   String ts_filename = getTimestampInternal();
@@ -238,7 +265,8 @@ void takePicture() {
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
-      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d\n", pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness);
+      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d,%d,%d\n",
+                 pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness, lab_found, other_found);
       csv.close();
     }
 
@@ -250,22 +278,11 @@ void takePicture() {
   }
 
   esp_camera_fb_return(fb);
-  delay(200);
+  delay(500);
   ledcWrite(pwmChannel, 0);
   pixels.clear();
   pixels.show();
 
-  while(digitalRead(BUTTON_PIN) == LOW) {
-      delay(10);
-      esp_task_wdt_reset();
-  }
-
-  // Vérification espace périodique
-  if (SD_MMC.totalBytes() - SD_MMC.usedBytes() < 50 * 1024 * 1024) {
-      showColor(COLOR_WARN_SPACE);
-  }
-
-  esp_task_wdt_reset();
   isProcessing = false;
 }
 
