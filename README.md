@@ -17,6 +17,8 @@ Système intelligent et low-cost de comptage et de classification de colonies ba
 - **Anneau NeoPixel (16 LEDs)** + Bande LED High-CRI (Imagerie)
 - **Carte Micro SD** (FAT32, < 32GB)
 - **Condensateur 470µF** (Indispensable entre 5V et GND)
+ - **Résistance 10kΩ** (Pull-down pour GPIO 12)
+ - **MOSFET Canal-N** (ex: 2N7000, pour l'imagerie High-CRI)
 
 ## 🚀 Installation
 
@@ -31,6 +33,7 @@ Installez les bibliothèques suivantes via le Library Manager :
 - `Adafruit NeoPixel`
 - `Adafruit BME280 Library`
 - `Adafruit Unified Sensor`
+ - `RTClib` (Adafruit)
 
 ## 📖 Utilisation
 1. Insérez une carte SD.

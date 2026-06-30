@@ -1,8 +1,8 @@
 /**
  * @file ColonyCounterCapture.ino
  * @author Jules
- * @brief Système de capture d'images durci (v1.4).
- *        - Gestion RTC DS3231 (Précision scientifique sans WiFi)
+ * @brief Système de capture d'images durci (v1.5).
+ *        - Gestion RTC DS3231 (Précision scientifique)
  *        - Protection WDT pendant les écritures SD lourdes
  *        - Anti-rebond TTP223 et isolation I2C
  */
@@ -121,7 +121,14 @@ void setup() {
   // Initialisation I2C pour BME280 et RTC
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(0x76, &Wire)) bmeFound = true;
-  if (rtc.begin(&Wire)) rtcFound = true;
+
+  if (rtc.begin(&Wire)) {
+    rtcFound = true;
+    if (rtc.lostPower()) {
+      Serial.println("⚠️ RTC a perdu l'alimentation. Réglage sur l'heure de compilation.");
+      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    }
+  }
   Wire.end();
 
   if(!SD_MMC.begin("/sdcard", true)){

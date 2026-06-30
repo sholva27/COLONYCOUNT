@@ -1,0 +1,17 @@
+# PlatformIO build artifacts
+.pio/
+.vscode/
+
+# Build outputs
+*.bin
+*.elf
+*.hex
+
+# Python artifacts
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
