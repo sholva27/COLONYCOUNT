@@ -23,8 +23,17 @@ Le code intègre plusieurs mécanismes de sécurité :
 - **Stabilisation AEC/AWB :** Avant la capture finale, 3 images sont capturées et jetées pour laisser le temps au capteur de stabiliser l'exposition lumineuse sous le flash.
 - **Flag isProcessing :** Empêche tout chevauchement de processus (bouton pressé plusieurs fois trop vite).
 
-## 5. Algorithmes de Vision (Inspiration ImageJ)
+## 5. Optimisation IA (TFLite Micro)
+Pour l'inférence sur un ESP32 classique (sans accélération matérielle SIMD) :
+- **Quantification INT8 :** Indispensable pour réduire la taille du modèle et accélérer les calculs.
+- **Résolution d'entrée :** Limiter la taille à **96x96** ou **128x128** pixels.
+- **Approche par tuiles :** Au lieu de traiter l'image UXGA entière, l'ESP32 doit d'abord localiser les colonies (via vision classique) puis soumettre chaque petite vignette (tuile) au modèle d'IA pour classification.
+
+## 6. Algorithmes de Vision (Inspiration ImageJ)
 Pour le comptage sur ESP32, nous privilégierons une approche hybride :
 1.  **Soustraction de fond locale :** Pour compenser l'opacité variable du milieu MRS.
 2.  **Seuillage d'Otsu :** Auto-adaptation à la luminosité de la capture.
 3.  **Filtrage par taille/circularité :** Comme le fait l'outil "Analyze Particles" d'ImageJ pour éliminer les poussières et les bulles d'air.
+
+## 7. Note sur le langage (C++ vs MicroPython)
+Bien que MicroPython soit excellent pour le prototypage rapide, le déploiement final de l'IA (Phase 4) doit se faire en **C++/ESP-IDF**. MicroPython manque de support natif performant pour TensorFlow Lite Micro et les opérations de traitement d'image pixel par pixel y sont trop lentes pour cette application.
