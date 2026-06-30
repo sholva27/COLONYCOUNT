@@ -23,8 +23,8 @@
 
 // Pins
 const int BUTTON_PIN = 13;
-const int FLASH_PWM_PIN = 4;
-const int NEOPIXEL_PIN = 12;
+const int FLASH_PWM_PIN = 4;   // Note: Shared with SD D1, requires SD 1-bit mode
+const int NEOPIXEL_PIN = 12;    // Note: Strapping pin MTDI. Pull-down 10k recommended.
 const int NUMPIXELS = 12;
 
 // Configuration I2C
