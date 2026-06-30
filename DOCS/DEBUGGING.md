@@ -21,7 +21,17 @@
 ## 4. Problèmes NeoPixel (WS2812B)
 - **Couleurs erronées ou clignotements :** Le signal 3.3V de l'ESP32 est limite pour les NeoPixels alimentés en 5V. Réduisez la tension d'alimentation des LEDs à 4.5V ou utilisez un level shifter.
 
-## 5. Problèmes Bouton Tactile (TTP223)
+## 5. Codes Erreurs NeoPixel
+Pour un diagnostic rapide sur le terrain (v1.6+) :
+| Couleur | Signification | Action |
+| :--- | :--- | :--- |
+| **Rouge Fixe** | Échec Caméra | Vérifiez le branchement et le 5V. |
+| **Magenta Fixe** | Échec Carte SD | Vérifiez le format FAT32 et l'insertion. |
+| **Violet** | Espace Faible (<50Mo) | Changez de carte SD ou videz-la. |
+| **Orange** | Initialisation | Attendez quelques secondes. |
+| **Vert** | Prêt | Le système attend une capture. |
+
+## 6. Problèmes Bouton Tactile (TTP223)
 - **Déclenchements intempestifs :** Sensibilité trop élevée ou câbles trop longs.
 - **Multi-déclenchement (Double photo) :** Le TTP223 est un capteur capacitif qui peut mettre du temps à se "décharger" après un contact. Le code intègre une attente de relâchement explicite pour éviter cela.
 - **Bouton ne répond pas :** Vérifiez que le GPIO 13 ne touche pas un autre composant de la carte SD.

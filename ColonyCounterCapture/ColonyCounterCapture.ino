@@ -1,10 +1,10 @@
 /**
  * @file ColonyCounterCapture.ino
  * @author Jules
- * @brief Système de capture d'images durci (v1.5).
- *        - Gestion RTC DS3231 (Précision scientifique)
- *        - Protection WDT pendant les écritures SD lourdes
- *        - Anti-rebond TTP223 et isolation I2C
+ * @brief Système de capture durci pour Dataset (v1.6).
+ *        - Paramètres caméra FIGÉS (AEC/AWB) pour cohérence IA
+ *        - Nommage fichiers par horodatage RTC
+ *        - Diagnostic visuel avancé et gestion espace SD
  */
 
 #include "esp_camera.h"
@@ -30,6 +30,15 @@ const int NUMPIXELS = 16;
 #define I2C_SDA 26
 #define I2C_SCL 27
 #define WDT_TIMEOUT 15
+
+// Couleurs Status
+const uint32_t COLOR_INIT = 0xFFA500;    // Orange
+const uint32_t COLOR_READY = 0x00FF00;   // Vert
+const uint32_t COLOR_CAPTURE = 0xFFFFFF; // Blanc
+const uint32_t COLOR_SUCCESS = 0x0000FF; // Bleu
+const uint32_t COLOR_ERR_CAM = 0xFF0000; // Rouge
+const uint32_t COLOR_ERR_SD = 0xFF00FF;  // Magenta
+const uint32_t COLOR_WARN_SPACE = 0x800080; // Violet
 
 Preferences preferences;
 Adafruit_BME280 bme;
@@ -65,6 +74,11 @@ const int pwmChannel = 7;
 const int pwmFreq = 5000;
 const int pwmResolution = 8;
 
+void showColor(uint32_t color) {
+  for(int i=0; i<NUMPIXELS; i++) pixels.setPixelColor(i, color);
+  pixels.show();
+}
+
 void setup() {
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT);
@@ -74,7 +88,7 @@ void setup() {
 
   pixels.begin();
   pixels.setBrightness(50);
-  showColor(pixels.Color(255, 165, 0));
+  showColor(COLOR_INIT);
 
   ledcSetup(pwmChannel, pwmFreq, pwmResolution);
   ledcAttachPin(IMAGING_LIGHT_PIN, pwmChannel);
@@ -114,29 +128,42 @@ void setup() {
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    showColor(pixels.Color(255, 0, 0));
+    showColor(COLOR_ERR_CAM);
     return;
   }
 
-  // Initialisation I2C pour BME280 et RTC
+  // FIGER LES RÉGLAGES CAPTEUR (Après init)
+  sensor_t * s = esp_camera_sensor_get();
+  s->set_whitebal(s, 0);       // Désactiver AWB
+  s->set_wb_mode(s, 0);        // Mode fixe (Daylight/Manual)
+  s->set_exposure_ctrl(s, 0);  // Désactiver AEC
+  s->set_aec_value(s, 300);    // Valeur fixe à ajuster selon éclairage
+  s->set_gain_ctrl(s, 0);      // Désactiver AGC
+  s->set_agc_gain(s, 0);       // Gain fixe
+
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(0x76, &Wire)) bmeFound = true;
-
   if (rtc.begin(&Wire)) {
     rtcFound = true;
     if (rtc.lostPower()) {
-      Serial.println("⚠️ RTC a perdu l'alimentation. Réglage sur l'heure de compilation.");
       rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
     }
   }
   Wire.end();
 
   if(!SD_MMC.begin("/sdcard", true)){
-    showColor(pixels.Color(255, 0, 0));
+    showColor(COLOR_ERR_SD);
     return;
   }
 
   if(!SD_MMC.exists("/img")) SD_MMC.mkdir("/img");
+
+  // Vérification espace SD
+  uint64_t freeBytes = SD_MMC.totalBytes() - SD_MMC.usedBytes();
+  if (freeBytes < 50 * 1024 * 1024) {
+      showColor(COLOR_WARN_SPACE);
+      delay(2000);
+  }
 
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
@@ -149,7 +176,7 @@ void setup() {
   preferences.begin("colony-counter", false);
   pictureNumber = preferences.getUInt("num", 0);
 
-  showColor(pixels.Color(0, 255, 0));
+  showColor(COLOR_READY);
   delay(1000);
   pixels.clear();
   pixels.show();
@@ -158,19 +185,10 @@ void setup() {
   esp_task_wdt_reset();
 }
 
-void showColor(uint32_t color) {
-  for(int i=0; i<NUMPIXELS; i++) pixels.setPixelColor(i, color);
-  pixels.show();
-}
-
-/**
- * @brief Récupère l'horodatage actuel.
- * Note: Ne gère plus le bus Wire elle-même, doit être appelée dans une session Wire.begin/end.
- */
 String getTimestampInternal() {
-  if (!rtcFound) return "0000-00-00 00:00:00";
+  if (!rtcFound) return "00000000_000000";
   DateTime now = rtc.now();
-  char buf[] = "YYYY-MM-DD hh:mm:ss";
+  char buf[] = "YYYYMMDD_hhmmss";
   return String(now.toString(buf));
 }
 
@@ -180,9 +198,9 @@ void takePicture() {
   esp_task_wdt_reset();
 
   ledcWrite(pwmChannel, flashBrightness);
-  showColor(pixels.Color(255, 255, 255));
+  showColor(COLOR_CAPTURE);
 
-  // Stabilisation du capteur
+  // Stabilisation AEC/AWB (même si désactivés, le capteur a besoin de frames pour se caler)
   for(int i = 0; i < 3; i++) {
     camera_fb_t * dummy_fb = esp_camera_fb_get();
     if(dummy_fb) esp_camera_fb_return(dummy_fb);
@@ -198,16 +216,18 @@ void takePicture() {
     return;
   }
 
-  // Session I2C groupée pour minimiser les ouvertures de bus
   Wire.begin(I2C_SDA, I2C_SCL);
-  String timestamp = getTimestampInternal();
-  float t = bmeFound ? bme.readTemperature() : 0;
-  float h = bmeFound ? bme.readHumidity() : 0;
-  float p = bmeFound ? bme.readPressure() / 100.0F : 0;
-  Wire.end();
-  delay(10); // Latence de sécurité pour le driver SCCB caméra
+  String ts_filename = getTimestampInternal();
+  DateTime now = rtc.now();
+  char ts_csv_buf[] = "YYYY-MM-DD hh:mm:ss";
+  String ts_csv = String(now.toString(ts_csv_buf));
 
-  String path = "/img/colony_" + String(pictureNumber) + ".jpg";
+  float t = bmeFound ? bme.readTemperature() : -999.0;
+  float h = bmeFound ? bme.readHumidity() : -999.0;
+  float p = bmeFound ? bme.readPressure() / 100.0F : -999.0;
+  Wire.end();
+
+  String path = "/img/colony_" + ts_filename + ".jpg";
 
   esp_task_wdt_reset();
   File file = SD_MMC.open(path.c_str(), FILE_WRITE);
@@ -218,13 +238,15 @@ void takePicture() {
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
-      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d\n", pictureNumber, timestamp.c_str(), t, h, p, flashBrightness);
+      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d\n", pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness);
       csv.close();
     }
 
     pictureNumber++;
     preferences.putUInt("num", pictureNumber);
-    showColor(pixels.Color(0, 0, 255));
+    showColor(COLOR_SUCCESS);
+  } else {
+    showColor(COLOR_ERR_SD);
   }
 
   esp_camera_fb_return(fb);
@@ -236,6 +258,11 @@ void takePicture() {
   while(digitalRead(BUTTON_PIN) == LOW) {
       delay(10);
       esp_task_wdt_reset();
+  }
+
+  // Vérification espace périodique
+  if (SD_MMC.totalBytes() - SD_MMC.usedBytes() < 50 * 1024 * 1024) {
+      showColor(COLOR_WARN_SPACE);
   }
 
   esp_task_wdt_reset();

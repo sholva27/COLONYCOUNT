@@ -13,8 +13,14 @@ L'anneau de LED sert d'interface utilisateur :
 - **Bleu flash :** Écriture sur carte SD réussie.
 - **Rouge fixe :** Erreur critique (Carte SD absente ou Caméra HS).
 
-## 3. Optimisations PWM
-L'intensité du flash est réglée par défaut à 128/255 pour éviter l'éblouissement du capteur OV2640 sur le milieu MRS clair. Cette valeur peut être ajustée dans la variable `flashBrightness` du code.
+## 3. Optimisations PWM et Calibration Optique
+L'intensité du flash (ruban High-CRI) est réglée par défaut à 128/255.
+
+### Calibration AWB / AEC (v1.6+)
+Pour garantir la cohérence du dataset, les réglages automatiques de la caméra sont désactivés. Vous devez fixer les valeurs optimales dans `setup()` :
+- **AEC (Exposure) :** Ajustez `s->set_aec_value(s, X)` jusqu'à ce que le milieu MRS soit bien exposé sans zones blanches saturées.
+- **AGC (Gain) :** Gardez le gain au minimum (`0`) pour limiter le bruit numérique.
+- **AWB (Balance des blancs) :** Désactivé. Utilisez le mode `0` (Manual/Daylight) pour que les teintes LAB (crème) vs Moisissures (gris) soient constantes.
 
 ## 4. Stabilité et Durcissement (Hardening)
 Le code intègre plusieurs mécanismes de sécurité :
