@@ -1,10 +1,10 @@
 /**
  * @file ColonyCounterCapture.ino
  * @author Jules
- * @brief Système de capture d'images durci (v1.3).
- *        - Watchdog protégé pendant le boot (WiFi/NTP)
- *        - Anti-rebond et anti-multi-déclenchement pour TTP223
- *        - Gestion isolée du bus I2C
+ * @brief Système de capture d'images durci (v1.4).
+ *        - Gestion RTC DS3231 (Précision scientifique sans WiFi)
+ *        - Protection WDT pendant les écritures SD lourdes
+ *        - Anti-rebond TTP223 et isolation I2C
  */
 
 #include "esp_camera.h"
@@ -18,16 +18,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_NeoPixel.h>
+#include <RTClib.h>
 #include <esp_task_wdt.h>
-#include <WiFi.h>
-#include "time.h"
-
-// Configuration WiFi pour NTP
-const char* ssid     = "VOTRE_SSID";
-const char* password = "VOTRE_PASSWORD";
-const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600;
-const int   daylightOffset_sec = 3600;
 
 // Pins
 const int BUTTON_PIN = 13;
@@ -37,10 +29,11 @@ const int NUMPIXELS = 16;
 
 #define I2C_SDA 26
 #define I2C_SCL 27
-#define WDT_TIMEOUT 15 // Augmenté à 15s pour plus de marge
+#define WDT_TIMEOUT 15
 
 Preferences preferences;
 Adafruit_BME280 bme;
+RTC_DS3231 rtc;
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 // Camera Pins AI-Thinker
@@ -63,6 +56,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 int pictureNumber = 0;
 bool bmeFound = false;
+bool rtcFound = false;
 bool isInitialized = false;
 volatile bool isProcessing = false;
 int flashBrightness = 128;
@@ -75,37 +69,12 @@ void setup() {
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT);
 
-  // Initialisation Watchdog
   esp_task_wdt_init(WDT_TIMEOUT, true);
   esp_task_wdt_add(NULL);
 
   pixels.begin();
   pixels.setBrightness(50);
   showColor(pixels.Color(255, 165, 0));
-
-  // WiFi et NTP avec Reset du Watchdog
-  WiFi.begin(ssid, password);
-  unsigned long startAttemptTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-    delay(500);
-    Serial.print(".");
-    esp_task_wdt_reset(); // Empêcher le reset WDT pendant la connexion WiFi
-  }
-
-  if(WiFi.status() == WL_CONNECTED) {
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-    Serial.print("Synchro NTP");
-    int retry = 0;
-    while (time(nullptr) < 1000000 && retry < 20) {
-      delay(500);
-      Serial.print(".");
-      esp_task_wdt_reset(); // Empêcher le reset WDT pendant l'attente NTP
-      retry++;
-    }
-    Serial.println(time(nullptr) > 1000000 ? " OK" : " Échec");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-  }
 
   ledcSetup(pwmChannel, pwmFreq, pwmResolution);
   ledcAttachPin(IMAGING_LIGHT_PIN, pwmChannel);
@@ -149,9 +118,10 @@ void setup() {
     return;
   }
 
-  // I2C Management
+  // Initialisation I2C pour BME280 et RTC
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(0x76, &Wire)) bmeFound = true;
+  if (rtc.begin(&Wire)) rtcFound = true;
   Wire.end();
 
   if(!SD_MMC.begin("/sdcard", true)){
@@ -187,11 +157,12 @@ void showColor(uint32_t color) {
 }
 
 String getTimestamp() {
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) return "0000-00-00 00:00:00";
-  char timeString[20];
-  strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
-  return String(timeString);
+  if (!rtcFound) return "0000-00-00 00:00:00";
+  Wire.begin(I2C_SDA, I2C_SCL);
+  DateTime now = rtc.now();
+  Wire.end();
+  char buf[] = "YYYY-MM-DD hh:mm:ss";
+  return String(now.toString(buf));
 }
 
 void takePicture() {
@@ -219,17 +190,20 @@ void takePicture() {
 
   String timestamp = getTimestamp();
   String path = "/img/colony_" + String(pictureNumber) + ".jpg";
+
+  esp_task_wdt_reset(); // Reset avant écriture lourde
   File file = SD_MMC.open(path.c_str(), FILE_WRITE);
   if(file){
     file.write(fb->buf, fb->len);
     file.close();
+    esp_task_wdt_reset(); // Reset après écriture lourde
 
     Wire.begin(I2C_SDA, I2C_SCL);
     float t = bmeFound ? bme.readTemperature() : 0;
     float h = bmeFound ? bme.readHumidity() : 0;
     float p = bmeFound ? bme.readPressure() / 100.0F : 0;
     Wire.end();
-    delay(10); // Laisse le bus se stabiliser avant tout usage SCCB par AEC/AGC
+    delay(10);
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
@@ -248,7 +222,6 @@ void takePicture() {
   pixels.clear();
   pixels.show();
 
-  // Attendre le relâchement du bouton (TTP223 a un temps de décharge)
   while(digitalRead(BUTTON_PIN) == LOW) {
       delay(10);
       esp_task_wdt_reset();
@@ -262,7 +235,6 @@ void loop() {
   esp_task_wdt_reset();
   if (!isInitialized) return;
 
-  // Déclenchement sur front descendant (Active LOW) avec validation de durée (200ms)
   if (digitalRead(BUTTON_PIN) == LOW && !isProcessing) {
     unsigned long pressTime = millis();
     bool confirmed = false;

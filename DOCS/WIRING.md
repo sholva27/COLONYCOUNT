@@ -25,11 +25,12 @@ GPIO26 <--[ IO26 ]    [ IO27 ]--> I2C SCL (BME280)
    - VCC -> 5V
    - GND -> GND
    - SIG -> **GPIO 13**
-2. **Capteur BME280 :**
+2. **Bus I2C (BME280 & RTC DS3231) :**
    - VCC -> 3.3V
    - GND -> GND
    - SDA -> **GPIO 26**
    - SCL -> **GPIO 27**
+   - *Note : Les deux modules partagent les mêmes pins SDA/SCL.*
 3. **NeoPixel Ring (Status) :**
    - VCC -> 5V
    - GND -> GND

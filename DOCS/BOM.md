@@ -4,6 +4,7 @@
 | :--- | :--- | :--- |
 | **Microcontrôleur** | 1 | ESP32-CAM (AI-Thinker avec PSRAM) |
 | **Capteur Env.** | 1 | Module BME280 (I2C) |
+| **Horloge (RTC)** | 1 | Module DS3231 (I2C Haute Précision) |
 | **Bouton Tactile** | 1 | TTP223 (Module capacitive touch) |
 | **Éclairage (Status)** | 1 | Anneau NeoPixel **16 LEDs** (Diamètre 44.5mm, WS2812B) |
 | **Éclairage (Imagerie)** | 1 | Bande LED **CRI > 95** (Blanc Froid 6000K, type COB) |
