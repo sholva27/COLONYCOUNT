@@ -14,8 +14,8 @@
 
 ## 3. Problèmes d'Alimentation
 - **Brownout Detector :** L'ESP32 redémarre lors de la capture ou du flash.
-    - **Solution :** Ajouter un condensateur de 100uF ou 470uF entre 5V et GND.
-    - **Contournement :** `WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);` (déjà dans le code).
+    - **DANGER :** Le Brownout Detector est activé dans le code par mesure de sécurité. Si vous n'avez pas une alimentation stable, la carte redémarrera pour protéger la carte SD de la corruption.
+    - **SOLUTION IMPÉRATIVE :** Souder un condensateur électrolytique de **470 µF** (ou plus) directement entre les pins **5V** et **GND** de l'ESP32-CAM. Cela compense les pics de courant lors de l'activation du Flash et du Wi-Fi.
 
 ## 4. Problèmes Bouton Tactile (TTP223)
 - **Déclenchements intempestifs :** Sensibilité trop élevée ou câbles trop longs.

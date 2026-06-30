@@ -1,12 +1,11 @@
 /**
  * @file ColonyCounterCapture.ino
  * @author Jules
- * @brief Système de capture d'images avec contrôle d'éclairage et capteurs.
- *        - ESP32-CAM + Carte SD (1-bit)
- *        - Bouton TTP223 (GPIO 13)
- *        - Éclairage PWM (GPIO 4)
- *        - NeoPixel Ring (GPIO 12)
- *        - Capteur BME280 (I2C partagé sur GPIO 26/27)
+ * @brief Système de capture d'images durci pour compteur de colonies.
+ *        - Sécurité anti-rebond et anti-chevauchement (isProcessing)
+ *        - Stabilisation active du capteur (frame discarding)
+ *        - Watchdog matériel pour la résilience
+ *        - Gestion hybride I2C/SCCB
  */
 
 #include "esp_camera.h"
@@ -20,23 +19,25 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include <Adafruit_NeoPixel.h>
+#include <esp_task_wdt.h>
 
 // Pins
-const int BUTTON_PIN = 13; // GPIO 13 has external pull-up on AI-Thinker
+const int BUTTON_PIN = 13;
 const int FLASH_PWM_PIN = 4;
 const int NEOPIXEL_PIN = 12;
-const int NUMPIXELS = 12; // Ajuster selon votre anneau
+const int NUMPIXELS = 12;
 
-// Configuration I2C pour BME280 (partagé avec la caméra)
+// Configuration I2C
 #define I2C_SDA 26
 #define I2C_SCL 27
+#define WDT_TIMEOUT 10 // 10 secondes
 
 // Instances
 Preferences preferences;
 Adafruit_BME280 bme;
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-// Pins de la caméra (AI-Thinker)
+// Pins AI-Thinker
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -56,34 +57,33 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 int pictureNumber = 0;
 bool bmeFound = false;
+volatile bool isProcessing = false;
+int flashBrightness = 128;
 
-// Configuration PWM pour le flash
+// PWM Configuration
 const int pwmChannel = 7;
 const int pwmFreq = 5000;
 const int pwmResolution = 8;
-int flashBrightness = 128; // 0-255
 
 void setup() {
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+  // On laisse le brownout activé par défaut pour la sécurité des données.
+  // L'utilisateur DOIT ajouter un condensateur de 470uF.
 
   Serial.begin(115200);
-
-  // GPIO 13 a une résistance de pull-up physique.
-  // Le TTP223 doit être configuré pour tirer vers GND (Active LOW)
-  // OU on change la logique de détection.
   pinMode(BUTTON_PIN, INPUT);
 
-  // Initialisation NeoPixel
+  // Initialisation Watchdog
+  esp_task_wdt_init(WDT_TIMEOUT, true);
+  esp_task_wdt_add(NULL);
+
   pixels.begin();
   pixels.setBrightness(50);
-  showColor(pixels.Color(255, 165, 0)); // Orange : Initialisation
+  showColor(pixels.Color(255, 165, 0));
 
-  // Initialisation PWM Flash
   ledcSetup(pwmChannel, pwmFreq, pwmResolution);
   ledcAttachPin(FLASH_PWM_PIN, pwmChannel);
   ledcWrite(pwmChannel, 0);
 
-  // Configuration de la caméra
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -118,76 +118,60 @@ void setup() {
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("Camera init failed with error 0x%x", err);
-    showColor(pixels.Color(255, 0, 0)); // Rouge : Erreur
-    return;
-  }
-
-  // Initialisation I2C explicite pour BME280
-  Wire.begin(I2C_SDA, I2C_SCL);
-  if (bme.begin(0x76, &Wire)) { // Adresse 0x76 ou 0x77
-    bmeFound = true;
-    Serial.println("BME280 trouvé !");
-  } else {
-    Serial.println("BME280 non trouvé. Vérifiez le câblage.");
-  }
-
-  // Initialisation Carte SD (mode 1-bit)
-  if(!SD_MMC.begin("/sdcard", true)){
-    Serial.println("SD Card Mount Failed");
     showColor(pixels.Color(255, 0, 0));
     return;
   }
 
-  if(!SD_MMC.exists("/img")) SD_MMC.mkdir("/img");
+  // Initialisation I2C ponctuelle
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (bme.begin(0x76, &Wire)) {
+    bmeFound = true;
+  }
+  Wire.end(); // Libérer le bus pour le driver SCCB de la caméra
 
-  // Initialisation CSV si inexistant
-  if(!SD_MMC.exists("/data.csv")){
-    File file = SD_MMC.open("/data.csv", FILE_WRITE);
-    if(file) {
-      file.println("ID,Temp,Humidite,Pression,LuminositePWM");
-      file.close();
-    }
+  if(!SD_MMC.begin("/sdcard", true)){
+    showColor(pixels.Color(255, 0, 0));
+    return;
   }
 
   preferences.begin("colony-counter", false);
   pictureNumber = preferences.getUInt("num", 0);
 
-  showColor(pixels.Color(0, 255, 0)); // Vert : Prêt
+  showColor(pixels.Color(0, 255, 0));
   delay(1000);
   pixels.clear();
   pixels.show();
 
-  Serial.println("Système prêt.");
+  esp_task_wdt_reset();
 }
 
 void showColor(uint32_t color) {
-  for(int i=0; i<NUMPIXELS; i++) {
-    pixels.setPixelColor(i, color);
-  }
+  for(int i=0; i<NUMPIXELS; i++) pixels.setPixelColor(i, color);
   pixels.show();
 }
 
-void logData(float t, float h, float p) {
-  File file = SD_MMC.open("/data.csv", FILE_APPEND);
-  if(file) {
-    file.printf("%d,%.2f,%.2f,%.2f,%d\n", pictureNumber, t, h, p, flashBrightness);
-    file.close();
-  }
-}
-
 void takePicture() {
-  // Allumage éclairage pour capture
+  if(isProcessing) return;
+  isProcessing = true;
+  esp_task_wdt_reset();
+
   ledcWrite(pwmChannel, flashBrightness);
-  showColor(pixels.Color(255, 255, 255)); // Blanc pour capture
-  delay(200); // Temps de stabilisation lumineuse
+  showColor(pixels.Color(255, 255, 255));
+
+  // STABILISATION DU CAPTEUR : Jeter les 3 premières frames
+  // pour laisser l'auto-exposition s'ajuster à la nouvelle lumière.
+  for(int i = 0; i < 3; i++) {
+    camera_fb_t * dummy_fb = esp_camera_fb_get();
+    if(dummy_fb) esp_camera_fb_return(dummy_fb);
+    delay(50);
+  }
 
   camera_fb_t * fb = esp_camera_fb_get();
   if(!fb) {
-    Serial.println("Capture échouée");
     ledcWrite(pwmChannel, 0);
     pixels.clear();
     pixels.show();
+    isProcessing = false;
     return;
   }
 
@@ -196,33 +180,46 @@ void takePicture() {
   if(file){
     file.write(fb->buf, fb->len);
     file.close();
-    Serial.printf("Image sauvegardée : %s\n", path.c_str());
 
-    // Lecture capteurs et log
+    // Log des données avec gestion I2C isolée
+    Wire.begin(I2C_SDA, I2C_SCL);
     float t = bmeFound ? bme.readTemperature() : 0;
     float h = bmeFound ? bme.readHumidity() : 0;
     float p = bmeFound ? bme.readPressure() / 100.0F : 0;
-    logData(t, h, p);
+    Wire.end();
+
+    File csv = SD_MMC.open("/data.csv", FILE_APPEND);
+    if(csv) {
+      csv.printf("%d,%.2f,%.2f,%.2f,%d\n", pictureNumber, t, h, p, flashBrightness);
+      csv.close();
+    }
 
     pictureNumber++;
     preferences.putUInt("num", pictureNumber);
-    showColor(pixels.Color(0, 0, 255)); // Bleu : Succès
+    showColor(pixels.Color(0, 0, 255));
   }
 
   esp_camera_fb_return(fb);
-  delay(500);
+  delay(500); // Latence d'écriture
   ledcWrite(pwmChannel, 0);
   pixels.clear();
   pixels.show();
+
+  esp_task_wdt_reset();
+  isProcessing = false;
 }
 
 void loop() {
-  // Détection du bouton : On attend une transition LOW (appui) car GPIO 13 est HIGH par défaut
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    delay(50); // Debounce
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      takePicture();
-      while(digitalRead(BUTTON_PIN) == LOW); // Attendre relâchement
+  esp_task_wdt_reset();
+
+  // Lecture bouton avec debounce et flag isProcessing
+  if (digitalRead(BUTTON_PIN) == LOW && !isProcessing) {
+    unsigned long pressTime = millis();
+    while(digitalRead(BUTTON_PIN) == LOW) {
+      if (millis() - pressTime > 200) { // Doit rester appuyé 200ms (anti-parasite)
+        takePicture();
+        break;
+      }
     }
   }
 }
