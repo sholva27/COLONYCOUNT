@@ -15,7 +15,8 @@
 
 ## Phase 3 : Entraînement de l'IA ⏳
 - [ ] **Data Augmentation massive** (Rotation, Flip, Zoom, Bruit, Variations de contraste).
-- [ ] Choix de l'architecture : Modèle personnalisé ultra-léger (ex: 96x96 pixels) pour compenser l'absence d'accélération matérielle sur ESP32 classique.
+- [ ] Choix de l'architecture : Modèle personnalisé ultra-léger (ex: 96x96 pixels).
+- [ ] **Optionnel : Migration vers ESP32-S3** pour bénéficier des instructions SIMD et accélérer l'inférence par 15x.
 - [ ] Entraînement sur PC (TensorFlow/Keras).
 - [ ] Conversion vers TensorFlow Lite Micro (TFLM).
 
