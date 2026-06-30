@@ -28,9 +28,9 @@ const int   daylightOffset_sec = 3600;
 
 // Pins
 const int BUTTON_PIN = 13;
-const int FLASH_PWM_PIN = 4;
-const int NEOPIXEL_PIN = 12;
-const int NUMPIXELS = 12;
+const int IMAGING_LIGHT_PIN = 4; // High-CRI LED PWM (via MOSFET). Shared with SD D1.
+const int NEOPIXEL_PIN = 12;      // Status Ring (16 LEDs). Pull-down 10k required.
+const int NUMPIXELS = 16;         // Anneau 44.5mm
 
 #define I2C_SDA 26
 #define I2C_SCL 27
@@ -60,6 +60,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 int pictureNumber = 0;
 bool bmeFound = false;
+bool isInitialized = false;
 volatile bool isProcessing = false;
 int flashBrightness = 128;
 
@@ -87,13 +88,28 @@ void setup() {
   }
   if(WiFi.status() == WL_CONNECTED) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-    Serial.println("\nNTP Synchronisé");
+
+    // Attendre que l'heure soit réellement synchronisée (asynchrone)
+    Serial.print("Attente synchro NTP");
+    int retry = 0;
+    while (time(nullptr) < 1000000 && retry < 20) {
+      delay(500);
+      Serial.print(".");
+      retry++;
+    }
+
+    if (time(nullptr) > 1000000) {
+        Serial.println("\nNTP Synchronisé !");
+    } else {
+        Serial.println("\nÉchec synchro NTP (timeout)");
+    }
+
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF); // Désactiver WiFi pour économiser et éviter brownout
   }
 
   ledcSetup(pwmChannel, pwmFreq, pwmResolution);
-  ledcAttachPin(FLASH_PWM_PIN, pwmChannel);
+  ledcAttachPin(IMAGING_LIGHT_PIN, pwmChannel);
   ledcWrite(pwmChannel, 0);
 
   camera_config_t config;
@@ -143,6 +159,11 @@ void setup() {
     return;
   }
 
+  // Création du dossier images si inexistant
+  if(!SD_MMC.exists("/img")) {
+      SD_MMC.mkdir("/img");
+  }
+
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
     if(file) {
@@ -158,6 +179,8 @@ void setup() {
   delay(1000);
   pixels.clear();
   pixels.show();
+
+  isInitialized = true;
   esp_task_wdt_reset();
 }
 
@@ -235,6 +258,8 @@ void takePicture() {
 
 void loop() {
   esp_task_wdt_reset();
+  if (!isInitialized) return;
+
   if (digitalRead(BUTTON_PIN) == LOW && !isProcessing) {
     unsigned long pressTime = millis();
     while(digitalRead(BUTTON_PIN) == LOW) {

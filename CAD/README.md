@@ -7,9 +7,10 @@ Ce dossier contiendra les modèles STL pour le boîtier du compteur de colonies.
 - **Isolation Lumineuse :** Boîtier opaque (noir ou gris foncé) pour éviter les lumières parasites externes.
 - **Support de Boîte :** Diamètre de 92mm avec un épaulement de centrage pour les boîtes de Pétri standard.
 
-## 2. Éclairage (Side Lighting)
-- **Support NeoPixel :** Rainure circulaire à mi-hauteur pour maintenir l'anneau de LEDs incliné à 45° vers la boîte.
-- **Diffuseur :** Emplacement pour un anneau en plastique opalin ou du papier calque devant les LEDs.
+## 2. Éclairage (Double Système)
+- **Status (Haut) :** Emplacement pour anneau NeoPixel **16 LEDs (Diamètre ext. 44.5mm)** autour de l'objectif.
+- **Imagerie (Bas) :** Logement circulaire de **diamètre 100mm** pour ruban LED COB blanc. Incliné à 30-45° pour un éclairage tangentiel (Darkfield-like).
+- **Diffuseur :** Support pour anneau diffusant imprimé en PETG translucide (1 couche) ou papier calque.
 
 ## 3. Maintenance et Accès
 - **Trappe SD :** Ouverture latérale pour retirer la carte Micro SD sans démonter le boîtier.
