@@ -1,11 +1,7 @@
 /**
  * @file ColonyCounterCapture.ino
  * @author Jules
- * @brief Système de capture d'images durci pour compteur de colonies.
- *        - Sécurité anti-rebond et anti-chevauchement (isProcessing)
- *        - Stabilisation active du capteur (frame discarding)
- *        - Watchdog matériel pour la résilience
- *        - Gestion hybride I2C/SCCB
+ * @brief Système de capture d'images durci avec horodatage NTP.
  */
 
 #include "esp_camera.h"
@@ -20,24 +16,31 @@
 #include <Adafruit_BME280.h>
 #include <Adafruit_NeoPixel.h>
 #include <esp_task_wdt.h>
+#include <WiFi.h>
+#include "time.h"
+
+// Configuration WiFi pour NTP
+const char* ssid     = "VOTRE_SSID";
+const char* password = "VOTRE_PASSWORD";
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 3600; // Ajuster selon fuseau (ex: +1h = 3600)
+const int   daylightOffset_sec = 3600;
 
 // Pins
 const int BUTTON_PIN = 13;
-const int FLASH_PWM_PIN = 4;   // Note: Shared with SD D1, requires SD 1-bit mode
-const int NEOPIXEL_PIN = 12;    // Note: Strapping pin MTDI. Pull-down 10k recommended.
+const int FLASH_PWM_PIN = 4;
+const int NEOPIXEL_PIN = 12;
 const int NUMPIXELS = 12;
 
-// Configuration I2C
 #define I2C_SDA 26
 #define I2C_SCL 27
-#define WDT_TIMEOUT 10 // 10 secondes
+#define WDT_TIMEOUT 10
 
-// Instances
 Preferences preferences;
 Adafruit_BME280 bme;
 Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-// Pins AI-Thinker
+// Camera Pins AI-Thinker
 #define PWDN_GPIO_NUM     32
 #define RESET_GPIO_NUM    -1
 #define XCLK_GPIO_NUM      0
@@ -60,25 +63,34 @@ bool bmeFound = false;
 volatile bool isProcessing = false;
 int flashBrightness = 128;
 
-// PWM Configuration
 const int pwmChannel = 7;
 const int pwmFreq = 5000;
 const int pwmResolution = 8;
 
 void setup() {
-  // On laisse le brownout activé par défaut pour la sécurité des données.
-  // L'utilisateur DOIT ajouter un condensateur de 470uF.
-
   Serial.begin(115200);
   pinMode(BUTTON_PIN, INPUT);
 
-  // Initialisation Watchdog
   esp_task_wdt_init(WDT_TIMEOUT, true);
   esp_task_wdt_add(NULL);
 
   pixels.begin();
   pixels.setBrightness(50);
   showColor(pixels.Color(255, 165, 0));
+
+  // WiFi et NTP
+  WiFi.begin(ssid, password);
+  unsigned long startAttemptTime = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    delay(500);
+    Serial.print(".");
+  }
+  if(WiFi.status() == WL_CONNECTED) {
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    Serial.println("\nNTP Synchronisé");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF); // Désactiver WiFi pour économiser et éviter brownout
+  }
 
   ledcSetup(pwmChannel, pwmFreq, pwmResolution);
   ledcAttachPin(FLASH_PWM_PIN, pwmChannel);
@@ -122,16 +134,21 @@ void setup() {
     return;
   }
 
-  // Initialisation I2C ponctuelle
   Wire.begin(I2C_SDA, I2C_SCL);
-  if (bme.begin(0x76, &Wire)) {
-    bmeFound = true;
-  }
-  Wire.end(); // Libérer le bus pour le driver SCCB de la caméra
+  if (bme.begin(0x76, &Wire)) bmeFound = true;
+  Wire.end();
 
   if(!SD_MMC.begin("/sdcard", true)){
     showColor(pixels.Color(255, 0, 0));
     return;
+  }
+
+  if(!SD_MMC.exists("/data.csv")){
+    File file = SD_MMC.open("/data.csv", FILE_WRITE);
+    if(file) {
+      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM");
+      file.close();
+    }
   }
 
   preferences.begin("colony-counter", false);
@@ -141,13 +158,22 @@ void setup() {
   delay(1000);
   pixels.clear();
   pixels.show();
-
   esp_task_wdt_reset();
 }
 
 void showColor(uint32_t color) {
   for(int i=0; i<NUMPIXELS; i++) pixels.setPixelColor(i, color);
   pixels.show();
+}
+
+String getTimestamp() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    return "0000-00-00 00:00:00";
+  }
+  char timeString[20];
+  strftime(timeString, sizeof(timeString), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(timeString);
 }
 
 void takePicture() {
@@ -158,8 +184,6 @@ void takePicture() {
   ledcWrite(pwmChannel, flashBrightness);
   showColor(pixels.Color(255, 255, 255));
 
-  // STABILISATION DU CAPTEUR : Jeter les 3 premières frames
-  // pour laisser l'auto-exposition s'ajuster à la nouvelle lumière.
   for(int i = 0; i < 3; i++) {
     camera_fb_t * dummy_fb = esp_camera_fb_get();
     if(dummy_fb) esp_camera_fb_return(dummy_fb);
@@ -175,13 +199,13 @@ void takePicture() {
     return;
   }
 
+  String timestamp = getTimestamp();
   String path = "/img/colony_" + String(pictureNumber) + ".jpg";
   File file = SD_MMC.open(path.c_str(), FILE_WRITE);
   if(file){
     file.write(fb->buf, fb->len);
     file.close();
 
-    // Log des données avec gestion I2C isolée
     Wire.begin(I2C_SDA, I2C_SCL);
     float t = bmeFound ? bme.readTemperature() : 0;
     float h = bmeFound ? bme.readHumidity() : 0;
@@ -190,7 +214,7 @@ void takePicture() {
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
-      csv.printf("%d,%.2f,%.2f,%.2f,%d\n", pictureNumber, t, h, p, flashBrightness);
+      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d\n", pictureNumber, timestamp.c_str(), t, h, p, flashBrightness);
       csv.close();
     }
 
@@ -200,7 +224,7 @@ void takePicture() {
   }
 
   esp_camera_fb_return(fb);
-  delay(500); // Latence d'écriture
+  delay(500);
   ledcWrite(pwmChannel, 0);
   pixels.clear();
   pixels.show();
@@ -211,12 +235,10 @@ void takePicture() {
 
 void loop() {
   esp_task_wdt_reset();
-
-  // Lecture bouton avec debounce et flag isProcessing
   if (digitalRead(BUTTON_PIN) == LOW && !isProcessing) {
     unsigned long pressTime = millis();
     while(digitalRead(BUTTON_PIN) == LOW) {
-      if (millis() - pressTime > 200) { // Doit rester appuyé 200ms (anti-parasite)
+      if (millis() - pressTime > 200) {
         takePicture();
         break;
       }
