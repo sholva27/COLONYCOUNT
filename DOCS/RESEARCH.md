@@ -22,6 +22,11 @@ Les systèmes professionnels (type Scan1200) utilisent :
 2.  Un éclairage sombre (Darkfield) pour faire ressortir les colonies claires sur fond noir.
 *Notre projet avec ESP32-CAM (2MP) tente de reproduire cela à bas coût en optimisant l'angle d'éclairage latéral.*
 
-## 5. Défis de Segmentation
+## 5. Fidélité des Couleurs et Importance du CRI
+La distinction entre les colonies lactiques (souvent blanc crémeux ou translucides) et les contaminants (gris, vert, jaune) repose sur une analyse colorimétrique fine.
+- **Le problème du RGB :** Les LEDs NeoPixel (WS2812B) ont un spectre de lumière haché avec un **IRC (CRI) faible (~70)**. Cela signifie qu'elles ne restituent pas fidèlement les nuances de jaune et de blanc, ce qui peut induire l'IA en erreur.
+- **La solution High-CRI :** L'utilisation d'une source lumineuse blanche avec un **CRI > 95** (spectre continu) garantit que les couleurs capturées par l'OV2640 sont conformes à la réalité biologique, facilitant grandement le travail de classification du réseau de neurones.
+
+## 6. Défis de Segmentation
 - **Colonies fusionnées (Clustering) :** Quand deux colonies se touchent, l'algorithme doit être capable d'identifier deux centres distincts (utilisation possible de l'algorithme de Watershed).
 - **Artéfacts :** Les rayures sur le plastique de la boîte de Pétri ou les condensations d'eau sur le couvercle sont les principaux ennemis de l'IA.

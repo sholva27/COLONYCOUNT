@@ -6,17 +6,25 @@ Pour transformer le prototype actuel en un outil de laboratoire robuste et préc
 *   **Objectif Grand Angle vs Macro :** Remplacer l'objectif standard par une lentille **M12 macro** ou ajouter une lentille de lecture (+2 ou +4 dioptries) pour permettre une mise au point nette à 5-10 cm.
 *   **Filtre Polarisant :** Placer un petit film polarisant sur les LEDs et un autre (croisé à 90°) sur la caméra. Cela élimine radicalement les reflets brillants sur l'agar humide et le plastique.
 
-## 2. Contrôle de l'Éclairage
-*   **Éclairage Variable (PWM) :** Utiliser un transistor MOSFET pour contrôler l'intensité des LEDs depuis l'ESP32. Il est crucial de choisir un MOSFET à "niveau logique" (Logic Level) capable de s'ouvrir complètement avec les 3.3V de l'ESP32.
+## 2. Architecture d'Éclairage à Deux Composants
+Pour garantir à la fois une interface utilisateur claire et des images scientifiquement exploitables, le projet sépare les fonctions :
+
+### A. Éclairage de Status (NeoPixel Ring 16 LEDs)
+- **Modèle :** Diamètre 44.5mm.
+- **Rôle :** Retour visuel sur l'état du système (Prêt, Erreur, WiFi...).
+- **Justification :** Le format 16 LEDs offre une meilleure densité visuelle que le 12 LEDs pour un anneau continu.
+
+### B. Éclairage d'Imagerie (High-CRI 95+)
+- **Source :** Bande LED COB Blanc Froid (6000K) avec un **CRI > 95**.
+- **Contrôle :** PWM via MOSFET Canal-N (GPIO 4).
+- **Montage :** Disposé en cercle à l'intérieur du boîtier (diamètre ~100mm) pour un éclairage latéral homogène.
 
 ### MOSFETs Recommandés (Compatibles 3.3V) :
 | Modèle | Format | Courant Max | Avantages |
 | :--- | :--- | :--- | :--- |
-| **2N7000** | TO-92 (traversant) | 200mA | Très commun, idéal pour de petites barres de LEDs. |
-| **BSS138** | SOT-23 (CMS) | 360mA | Très petit, parfait pour intégration sur PCB. |
-| **AO3400** | SOT-23 (CMS) | 5.8A | Ultra-puissant, pour des éclairages très intenses. |
-| **IRLZ44N** | TO-220 (gros) | 47A | Surdimensionné mais s'ouvre parfaitement à 3.3V. |
-*   **Ring Light RGB :** Utiliser un anneau de LEDs NeoPixel (WS2812B). En changeant la couleur (ex: lumière verte ou bleue), on peut augmenter le contraste de certaines colonies lactiques translucides.
+| **2N7000** | TO-92 | 200mA | Idéal pour petits segments COB. |
+| **AO3400** | SOT-23 | 5.8A | Meilleur choix pour de longs rubans LEDs. |
+| **IRLZ44N** | TO-220 | 47A | Très robuste, facile à souder à la main. |
 
 ## 3. Capteurs Environnementaux
 *   **Température et Humidité (BME280) :** Si l'appareil reste dans l'incubateur, suivre ces paramètres permet de corréler la vitesse de croissance détectée par l'IA avec les conditions réelles.
