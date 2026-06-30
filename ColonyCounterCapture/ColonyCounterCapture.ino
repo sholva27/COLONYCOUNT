@@ -156,11 +156,13 @@ void showColor(uint32_t color) {
   pixels.show();
 }
 
-String getTimestamp() {
+/**
+ * @brief Récupère l'horodatage actuel.
+ * Note: Ne gère plus le bus Wire elle-même, doit être appelée dans une session Wire.begin/end.
+ */
+String getTimestampInternal() {
   if (!rtcFound) return "0000-00-00 00:00:00";
-  Wire.begin(I2C_SDA, I2C_SCL);
   DateTime now = rtc.now();
-  Wire.end();
   char buf[] = "YYYY-MM-DD hh:mm:ss";
   return String(now.toString(buf));
 }
@@ -173,6 +175,7 @@ void takePicture() {
   ledcWrite(pwmChannel, flashBrightness);
   showColor(pixels.Color(255, 255, 255));
 
+  // Stabilisation du capteur
   for(int i = 0; i < 3; i++) {
     camera_fb_t * dummy_fb = esp_camera_fb_get();
     if(dummy_fb) esp_camera_fb_return(dummy_fb);
@@ -188,22 +191,23 @@ void takePicture() {
     return;
   }
 
-  String timestamp = getTimestamp();
+  // Session I2C groupée pour minimiser les ouvertures de bus
+  Wire.begin(I2C_SDA, I2C_SCL);
+  String timestamp = getTimestampInternal();
+  float t = bmeFound ? bme.readTemperature() : 0;
+  float h = bmeFound ? bme.readHumidity() : 0;
+  float p = bmeFound ? bme.readPressure() / 100.0F : 0;
+  Wire.end();
+  delay(10); // Latence de sécurité pour le driver SCCB caméra
+
   String path = "/img/colony_" + String(pictureNumber) + ".jpg";
 
-  esp_task_wdt_reset(); // Reset avant écriture lourde
+  esp_task_wdt_reset();
   File file = SD_MMC.open(path.c_str(), FILE_WRITE);
   if(file){
     file.write(fb->buf, fb->len);
     file.close();
-    esp_task_wdt_reset(); // Reset après écriture lourde
-
-    Wire.begin(I2C_SDA, I2C_SCL);
-    float t = bmeFound ? bme.readTemperature() : 0;
-    float h = bmeFound ? bme.readHumidity() : 0;
-    float p = bmeFound ? bme.readPressure() / 100.0F : 0;
-    Wire.end();
-    delay(10);
+    esp_task_wdt_reset();
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {

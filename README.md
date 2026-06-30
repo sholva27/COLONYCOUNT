@@ -10,11 +10,12 @@ Système intelligent et low-cost de comptage et de classification de colonies ba
 - **Résilience :** Watchdog matériel et gestion sécurisée de la carte SD (mode 1-bit).
 
 ## 🛠️ Matériel Requis
-- **ESP32-CAM** (Modèle AI-Thinker recommandé)
+- **ESP32-CAM** (AI-Thinker avec PSRAM)
 - **Capteur BME280** (I2C)
+- **Module RTC DS3231** (I2C) + Pile CR2032 (Indispensable)
 - **Bouton Tactile TTP223**
-- **Anneau NeoPixel** (12 LEDs)
-- **Carte Micro SD** (Formatée en FAT32)
+- **Anneau NeoPixel (16 LEDs)** + Bande LED High-CRI (Imagerie)
+- **Carte Micro SD** (FAT32, < 32GB)
 - **Condensateur 470µF** (Indispensable entre 5V et GND)
 
 ## 🚀 Installation
