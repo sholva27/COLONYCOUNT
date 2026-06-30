@@ -9,12 +9,13 @@
 - [x] Documentation initiale et avancée.
 
 ## Phase 2 : Constitution du Dataset ⏳
-- [ ] Capture de 500+ images (250 lactiques, 250 contaminants).
+- [ ] Capture de **2000 à 5000 images** (Dataset équilibré LAB / Contaminants).
 - [ ] Étiquetage manuel (Annotation) des images sur PC.
 - [ ] Analyse statistique des tailles et couleurs.
 
 ## Phase 3 : Entraînement de l'IA ⏳
-- [ ] Choix de l'architecture (MobileNetV2, TinyYOLO ou CNN personnalisé).
+- [ ] **Data Augmentation massive** (Rotation, Flip, Zoom, Bruit, Variations de contraste).
+- [ ] Choix de l'architecture : Modèle personnalisé ultra-léger (ex: 96x96 pixels) pour compenser l'absence d'accélération matérielle sur ESP32 classique.
 - [ ] Entraînement sur PC (TensorFlow/Keras).
 - [ ] Conversion vers TensorFlow Lite Micro (TFLM).
 
@@ -24,8 +25,8 @@
 - [ ] Développement de l'interface de résultat (Série/Web).
 
 ## Phase 5 : Raffinement et Portabilité ⏳
-- [ ] Passage à MicroPython.
-- [ ] Conception d'un boîtier imprimé en 3D.
+- [ ] Optimisation de l'interface utilisateur (OLED/Web).
+- [ ] Conception d'un boîtier imprimé en 3D avec gestion de la condensation.
 - [ ] Intégration d'un écran OLED pour affichage direct du compte.
 
 ## Phase 6 : Évolution Professionnelle (Optionnelle) 🚀
