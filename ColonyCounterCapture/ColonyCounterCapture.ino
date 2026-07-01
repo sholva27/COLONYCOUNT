@@ -159,12 +159,13 @@ void setup() {
   }
 
   sensor_t * s = esp_camera_sensor_get();
-  s->set_whitebal(s, 0);
-  s->set_wb_mode(s, 0);
-  s->set_exposure_ctrl(s, 0);
-  s->set_aec_value(s, 300);
-  s->set_gain_ctrl(s, 0);
-  s->set_agc_gain(s, 0);
+  s->set_whitebal(s, 0);       // Désactive l'AWB automatique
+  s->set_awb_gain(s, 0);       // Désactive explicitement le gain AWB
+  s->set_wb_mode(s, 1);        // Preset "Sunny" (Fixe, adapté ~6000K)
+  s->set_exposure_ctrl(s, 0);  // Désactive l'AEC automatique
+  s->set_aec_value(s, 300);    // Valeur d'exposition fixe
+  s->set_gain_ctrl(s, 0);      // Désactive l'AGC automatique
+  s->set_agc_gain(s, 0);       // Gain fixe
 
   Wire.begin(I2C_SDA, I2C_SCL);
   if (bme.begin(0x76, &Wire)) bmeFound = true;
@@ -182,6 +183,12 @@ void setup() {
   }
 
   if(!SD_MMC.exists("/img")) SD_MMC.mkdir("/img");
+
+  // Vérification espace SD initial
+  if (SD_MMC.totalBytes() - SD_MMC.usedBytes() < 50 * 1024 * 1024) {
+    showColor(COLOR_WARN_SPACE);
+    delay(2000);
+  }
 
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
@@ -284,6 +291,17 @@ void takePicture() {
   pixels.show();
 
   isProcessing = false;
+
+  // Attente du relâchement du bouton pour éviter les déclenchements multiples
+  while(digitalRead(BUTTON_PIN) == LOW) {
+    delay(10);
+    esp_task_wdt_reset();
+  }
+
+  // Vérification de l'espace SD restant (< 50 Mo)
+  if (SD_MMC.totalBytes() - SD_MMC.usedBytes() < 50 * 1024 * 1024) {
+    showColor(COLOR_WARN_SPACE);
+  }
 }
 
 void loop() {
