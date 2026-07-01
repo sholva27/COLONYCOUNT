@@ -18,14 +18,13 @@ def verify_and_prepare(sd_path, output_path):
         return
 
     # Chargement des métadonnées (ID -> Timestamp, Temp, etc.)
-    metadata = {}
+    metadata_df = None
     if os.path.exists(csv_path):
         try:
-            df = pd.read_csv(csv_path)
+            metadata_df = pd.read_csv(csv_path)
             # Conversion de l'ID en string pour correspondre au nom de fichier
-            df['ID'] = df['ID'].astype(str)
-            metadata = df.set_index('ID').to_dict('index')
-            print(f"📊 {len(df)} entrées de métadonnées chargées depuis data.csv.")
+            metadata_df['ID'] = metadata_df['ID'].astype(str)
+            print(f"📊 {len(metadata_df)} entrées de métadonnées chargées depuis data.csv.")
         except Exception as e:
             print(f"⚠️ Impossible de lire data.csv: {e}")
 
@@ -63,11 +62,13 @@ def verify_and_prepare(sd_path, output_path):
             # 2. Récupération des métadonnées réelles via le Timestamp (v1.6+)
             # On cherche dans le CSV la ligne qui a ce timestamp
             img_meta = {}
-            if metadata:
+            if metadata_df is not None:
                 # On cherche par valeur de colonne 'Timestamp' car l'index est l'ID séquentiel
-                match = df[df['Timestamp'] == csv_ts_key]
+                match = metadata_df[metadata_df['Timestamp'] == csv_ts_key]
                 if not match.empty:
-                    img_meta = match.iloc[0].to_dict()
+                    # On ne récupère que les colonnes environnementales utiles (pas les stubs IA s'ils existent encore dans d'anciens CSV)
+                    cols_to_keep = ['ID', 'Timestamp', 'Temp', 'Humidite', 'Pression', 'LuminositePWM']
+                    img_meta = {k: v for k, v in match.iloc[0].to_dict().items() if k in cols_to_keep}
 
             sensor_ts = ts_from_filename.replace(' ', '_')
             new_name = f"COL_{sensor_ts}.jpg"
