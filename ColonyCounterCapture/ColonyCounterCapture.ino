@@ -12,13 +12,6 @@
 #include <RTClib.h>
 #include <esp_task_wdt.h>
 
-/**
- * AI INCLUDES
- * Note: These require the 'EloquentTinyML' or 'TensorFlowLite_ESP32' library.
- */
-// #include <EloquentTinyML.h>
-// #include "model_data.h" // Généré par tools/train_colony_model.py
-
 // Pins
 const int BUTTON_PIN = 13;
 const int IMAGING_LIGHT_PIN = 4;
@@ -73,36 +66,9 @@ const int pwmChannel = 7;
 const int pwmFreq = 5000;
 const int pwmResolution = 8;
 
-/**
- * AI PARAMETERS
- */
-#define MODEL_INPUT_SIZE 128
-#define ARENA_SIZE 128 * 1024
-// Eloquent::TinyML::TfLite<2, ARENA_SIZE> ml; // 2 classes ou binaire
-
 void showColor(uint32_t color) {
   for(int i=0; i<NUMPIXELS; i++) pixels.setPixelColor(i, color);
   pixels.show();
-}
-
-/**
- * Placeholder pour l'analyse d'image et le comptage
- */
-void runInference(camera_fb_t * fb, int *lab_count, int *other_count) {
-  *lab_count = 0;
-  *other_count = 0;
-
-  // Dans la version finale :
-  // 1. Parcourir l'image (Sliding window ou simple grid)
-  // 2. Extraire des zones de 128x128
-  // 3. Appeler ml.predict(input)
-  // 4. Incrémenter les compteurs
-
-  // Pour Prototype 1 (Simulation pour tester le CSV)
-  Serial.println("AI: Running inference (placeholder)...");
-  delay(500);
-  *lab_count = random(10, 50);
-  *other_count = random(0, 5);
 }
 
 void setup() {
@@ -193,16 +159,13 @@ void setup() {
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
     if(file) {
-      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM,LAB_Count,Other_Count");
+      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM");
       file.close();
     }
   }
 
   preferences.begin("colony-counter", false);
   pictureNumber = preferences.getUInt("num", 0);
-
-  // Init IA (si model_data.h présent)
-  // ml.begin(model_data);
 
   showColor(COLOR_READY);
   delay(1000);
@@ -211,13 +174,6 @@ void setup() {
 
   isInitialized = true;
   esp_task_wdt_reset();
-}
-
-String getTimestampInternal() {
-  if (!rtcFound) return "00000000_000000";
-  DateTime now = rtc.now();
-  char buf[] = "YYYYMMDD_hhmmss";
-  return String(now.toString(buf));
 }
 
 void takePicture() {
@@ -243,18 +199,19 @@ void takePicture() {
     return;
   }
 
-  // --- PHASE INFERENCE AI ---
-  showColor(COLOR_AI_BUSY);
-  int lab_found = 0;
-  int other_found = 0;
-  runInference(fb, &lab_found, &other_found);
-  // -------------------------
-
   Wire.begin(I2C_SDA, I2C_SCL);
-  String ts_filename = getTimestampInternal();
-  DateTime now = rtc.now();
-  char ts_csv_buf[] = "YYYY-MM-DD hh:mm:ss";
-  String ts_csv = String(now.toString(ts_csv_buf));
+
+  // Correction Race Condition RTC: Lecture UNIQUE de l'heure
+  String ts_filename = "00000000_000000";
+  String ts_csv = "0000-00-00 00:00:00";
+
+  if (rtcFound) {
+    DateTime now = rtc.now();
+    char buf_fn[] = "YYYYMMDD_hhmmss";
+    ts_filename = String(now.toString(buf_fn));
+    char buf_csv[] = "YYYY-MM-DD hh:mm:ss";
+    ts_csv = String(now.toString(buf_csv));
+  }
 
   float t = bmeFound ? bme.readTemperature() : -999.0;
   float h = bmeFound ? bme.readHumidity() : -999.0;
@@ -272,8 +229,8 @@ void takePicture() {
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
-      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d,%d,%d\n",
-                 pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness, lab_found, other_found);
+      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d\n",
+                 pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness);
       csv.close();
     }
 
