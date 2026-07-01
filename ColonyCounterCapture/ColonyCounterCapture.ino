@@ -55,6 +55,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
+const String FIRMWARE_VERSION = "1.7.0";
 int pictureNumber = 0;
 bool bmeFound = false;
 bool rtcFound = false;
@@ -159,7 +160,7 @@ void setup() {
   if(!SD_MMC.exists("/data.csv")){
     File file = SD_MMC.open("/data.csv", FILE_WRITE);
     if(file) {
-      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM");
+      file.println("ID,Timestamp,Temp,Humidite,Pression,LuminositePWM,Version");
       file.close();
     }
   }
@@ -229,8 +230,8 @@ void takePicture() {
 
     File csv = SD_MMC.open("/data.csv", FILE_APPEND);
     if(csv) {
-      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d\n",
-                 pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness);
+      csv.printf("%d,%s,%.2f,%.2f,%.2f,%d,%s\n",
+                 pictureNumber, ts_csv.c_str(), t, h, p, flashBrightness, FIRMWARE_VERSION.c_str());
       csv.close();
     }
 

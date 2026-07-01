@@ -67,7 +67,7 @@ def verify_and_prepare(sd_path, output_path):
                 match = metadata_df[metadata_df['Timestamp'] == csv_ts_key]
                 if not match.empty:
                     # On ne récupère que les colonnes environnementales utiles (pas les stubs IA s'ils existent encore dans d'anciens CSV)
-                    cols_to_keep = ['ID', 'Timestamp', 'Temp', 'Humidite', 'Pression', 'LuminositePWM']
+                    cols_to_keep = ['ID', 'Timestamp', 'Temp', 'Humidite', 'Pression', 'LuminositePWM', 'Version']
                     img_meta = {k: v for k, v in match.iloc[0].to_dict().items() if k in cols_to_keep}
 
             sensor_ts = ts_from_filename.replace(' ', '_')

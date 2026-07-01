@@ -1,46 +1,30 @@
-# Raffinement Logiciel (Software) - V2
+# Raffinement Logiciel (Software) - V3
 
-## 1. Gestion des données (Journalisation)
-Le système enregistre désormais un fichier `data.csv` à la racine de la carte SD à chaque capture.
-- **Champs :** ID de l'image, Température (°C), Humidité (%), Pression (hPa), Intensité Flash (0-255).
-- **Utilité :** Permet de corréler l'aspect des colonies avec les conditions de croissance.
+## 1. Gestion des données et Versioning
+Le fichier `data.csv` inclut désormais une colonne **Version** pour assurer la traçabilité du schéma de données.
+- **Header actuel :** `ID,Timestamp,Temp,Humidite,Pression,LuminositePWM,Version`
+- **Firmware Version :** Le système enregistre `1.7.0` (ou supérieur).
 
-## 2. Retour visuel par NeoPixel
-L'anneau de LED sert d'interface utilisateur :
-- **Orange fixe :** Démarrage et initialisation des périphériques.
-- **Vert fixe (1s) :** Prêt pour la capture.
-- **Blanc brillant :** Capture en cours (éclairage d'appoint).
-- **Bleu flash :** Écriture sur carte SD réussie.
-- **Rouge fixe :** Erreur critique (Carte SD absente ou Caméra HS).
+## 2. Calibration Spatiale et Optique
+Pour convertir les pixels en millimètres (UFC/mL), une calibration est indispensable.
+- **Gabarit :** Utilisez un damier de calibration OpenCV standard (Chessboard).
+- **Stockage :** Une capture du damier doit être effectuée pour chaque configuration (distance/focale).
+- **Prochaines étapes :** Intégration d'un script `tools/calibrate_camera.py` utilisant OpenCV `findChessboardCorners` pour générer une matrice de transformation.
 
-## 3. Optimisations PWM et Calibration Optique
-L'intensité du flash (ruban High-CRI) est réglée par défaut à 128/255.
+## 3. Fusion Multi-Cartes (Aggregation)
+Lorsque la collecte utilise plusieurs appareils ou cartes SD :
+- Le nommage par **Timestamp RTC** empêche les collisions de fichiers.
+- L'outil `tools/merge_datasets.py` (à venir) permettra de fusionner plusieurs `dataset_index.csv` en un index maître unique.
 
-### Calibration AWB / AEC (v1.6+)
-Pour garantir la cohérence du dataset, les réglages automatiques de la caméra sont désactivés. Vous devez fixer les valeurs optimales dans `setup()` :
-- **AEC (Exposure) :** Ajustez `s->set_aec_value(s, X)` jusqu'à ce que le milieu MRS soit bien exposé sans zones blanches saturées.
-- **AGC (Gain) :** Gardez le gain au minimum (`0`) pour limiter le bruit numérique.
-- **AWB (Balance des blancs) :** Désactivé. Utilisez le mode `0` (Manual/Daylight) pour que les teintes LAB (crème) vs Moisissures (gris) soient constantes.
+## 4. Annotation et Étiquetage (Phase 2+)
+L'outil `tools/colony_labeler.py` est le premier pas vers l'étiquetage manuel.
+- **Amélioration prévue :** Une interface plus fluide (Streamlit/Tkinter) pour valider les labels en vrac plutôt que par clic individuel.
 
-## 4. Stabilité et Durcissement (Hardening)
-Le code intègre plusieurs mécanismes de sécurité :
-- **Watchdog (WDT) :** Si le système se bloque (ex: I2C ou SD), l'ESP32 redémarre automatiquement après 15 secondes. Le code inclut des resets explicites autour des écritures SD massives (JPEG) pour éviter les resets intempestifs sur cartes lentes.
-- **Gestion I2C isolée :** Le bus I2C est ouvert (`Wire.begin`) uniquement lors de la lecture des capteurs et fermé immédiatement après (`Wire.end`) pour ne pas interférer avec le driver SCCB de la caméra. Une latence de sécurité est ajoutée pour stabiliser le bus. Note : Pour une fiabilité de grade industriel, la migration vers **ESP32-S3** (bus séparés) est la solution préconisée.
-- **Stabilisation AEC/AWB :** Avant la capture finale, 3 images sont capturées et jetées pour laisser le temps au capteur de stabiliser l'exposition lumineuse sous le flash.
-- **Horodatage Scientifique (RTC) :** Utilisation d'un module DS3231 (I2C) au lieu du WiFi+NTP. Cela supprime les pics de courant au boot, évite la dérive temporelle sur plusieurs jours (crucial pour le time-lapse) et permet un fonctionnement 100% hors-ligne.
-- **Flag isProcessing :** Empêche tout chevauchement de processus (bouton pressé plusieurs fois trop vite).
+## 5. Mise à jour Firmware Simplifiée (OTA-SD)
+Pour les déploiements multi-unités :
+- Utilisation de la bibliothèque `Update.h` pour vérifier au boot la présence d'un `firmware.bin` sur la carte SD.
+- Mise à jour automatique sans connexion USB.
 
-## 5. Optimisation IA (TFLite Micro)
-Pour l'inférence sur un ESP32 classique (sans accélération matérielle SIMD) :
-- **Quantification INT8 :** Indispensable pour réduire la taille du modèle et accélérer les calculs.
-- **Résolution d'entrée :** Limiter la taille à **96x96** ou **128x128** pixels.
-- **Approche par tuiles :** Au lieu de traiter l'image UXGA entière, l'ESP32 doit d'abord localiser les colonies (via vision classique) puis soumettre chaque petite vignette (tuile) au modèle d'IA pour classification.
-
-## 6. Algorithmes de Vision (Inspiration ImageJ)
-Pour le comptage sur ESP32, nous privilégierons une approche hybride :
-1.  **Soustraction de fond locale :** Pour compenser l'opacité variable du milieu MRS.
-2.  **Seuillage d'Otsu :** Auto-adaptation à la luminosité de la capture.
-3.  **Filtrage par taille/circularité :** Comme le fait l'outil "Analyze Particles" d'ImageJ pour éliminer les poussières et les bulles d'air.
-
-## 7. Note sur le langage (C++ vs MicroPython)
-Bien que MicroPython soit excellent pour le prototypage rapide, le déploiement final de l'IA (Phase 4) doit se faire en **C++/ESP-IDF**. MicroPython manque de support natif performant pour TensorFlow Lite Micro et les opérations de traitement d'image pixel par pixel y sont trop lentes pour cette application.
+## 6. Analyse Algorithmique Avancée
+- **Détection de flou :** Rejeter les images où la condensation sur le couvercle de la boîte de Pétri empêche la vision.
+- **Soustraction de fond locale :** Pour compenser l'hétérogénéité lumineuse du MRS.
